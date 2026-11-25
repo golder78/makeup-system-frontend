@@ -1,4 +1,4 @@
-import { state, money, esc, dateInputValue, dateOnly, toast, getBookingName } from "./core.js";
+import { state, money, esc, dateInputValue, dateOnly, localDateTimeValue, toast, getBookingName } from "./core.js";
 import { api } from "./api.js";
 import { navigate } from "./pages.js";
 
@@ -34,19 +34,20 @@ function bookingForm(booking = {}) {
   const clientOptions = [["", "Choose a client"], ...clients];
   const activeServices = state.services.filter((service) => service.isActive);
   const selectedIds = new Set((booking.services || []).map((item) => item.serviceId));
-  const serviceChooser = booking.id || !activeServices.length ? "" : `
+  const serviceChooser = booking.id ? "" : activeServices.length ? `
     <fieldset class="service-chooser">
-      <legend class="eyebrow">SERVICES (OPTIONAL)</legend>
+      <legend class="eyebrow">SELECT SERVICES (REQUIRED)</legend>
       <div class="form-stack">${activeServices.map((service) => `
         <label class="checkbox-option"><input name="services" type="checkbox" value="${service.id}" ${selectedIds.has(service.id) ? "checked" : ""} /><span>${esc(service.name)} · ${money(service.price)}</span></label>
       `).join("")}</div>
-    </fieldset>`;
+    </fieldset>` : `
+      <div class="form-hint"><p>Add and activate a service before creating a booking.</p><button class="button button-outline button-small" type="button" data-page="services">Go to services</button></div>`;
   return `${selectField("Client", "clientId", clientOptions, booking.clientId || booking.client?.id || "", true)}
     ${field("Location", "location", booking.location || "Studio", "text", true)}
-    ${field("Date and time", "date", localDateTimeValue(booking.date), "datetime-local", true)}
+    ${field("Date and time", "date", localDateTimeValue(booking.date || new Date()), "datetime-local", true)}
     <div class="field-pair">${field("Deposit", "deposit", booking.deposit ?? 0, "number", false, 'min="0" step="0.01"')}${selectField("Status", "status", [["pending", "Pending"], ["confirmed", "Confirmed"], ["completed", "Completed"], ["cancelled", "Cancelled"]], booking.status || "pending", true)}</div>
     ${textareaField("Notes", "notes", booking.notes || "")}${serviceChooser}
-    ${!clients.length ? '<p class="form-hint">Add a client before creating a booking.</p>' : ""}`;
+    ${!clients.length ? '<div class="form-hint"><p>Add a client before creating a booking.</p><button class="button button-outline button-small" type="button" data-page="clients">Go to clients</button></div>' : ""}`;
 }
 
 function incomeForm(record = {}) {
@@ -103,6 +104,20 @@ export function openRecordForm(type, record = null) {
   dialogForm.dataset.id = record?.id || "";
   dialog.showModal();
   dialogFields.querySelector("input, select, textarea")?.focus({ preventScroll: true });
+}
+
+export async function openBookingForm() {
+  try {
+    const [clients, services] = await Promise.all([
+      api("/clients"),
+      api("/services"),
+    ]);
+    state.clients = clients;
+    state.services = services;
+    openRecordForm("booking");
+  } catch (error) {
+    toast(`Could not load booking options: ${error.message}`, true);
+  }
 }
 
 function formDataFor(type, form) {
@@ -178,6 +193,14 @@ export async function submitRecord(event) {
   dialogError.textContent = "";
   try {
     const payload = formDataFor(type, dialogForm);
+    if (type === "booking" && !id && payload.services.length === 0) {
+      const serviceCheckbox = dialogFields.querySelector('[name="services"]');
+      dialogError.textContent = serviceCheckbox
+        ? "Select at least one service before saving this booking."
+        : "Add and activate a service before saving this booking.";
+      serviceCheckbox?.focus();
+      return;
+    }
     await api(`${config.endpoint}${id ? `/${id}` : ""}`, {
       method: id ? "PATCH" : "POST",
       body: JSON.stringify(payload),

@@ -1,7 +1,7 @@
 import { state, toast } from "./core.js";
 import { api } from "./api.js";
 import { navigate, renderCalendar, renderMoney } from "./pages.js";
-import { openRecordForm, submitRecord } from "./forms.js";
+import { openBookingForm, openRecordForm, submitRecord } from "./forms.js";
 
 const dialog = document.querySelector("#record-dialog");
 const dialogForm = document.querySelector("#record-form");
@@ -99,6 +99,7 @@ document.addEventListener("click", async (event) => {
   const pageLink = event.target.closest("[data-page], [data-page-link]");
   if (pageLink) {
     event.preventDefault();
+    if (dialog.open) dialog.close();
     await navigate(pageLink.dataset.page || pageLink.dataset.pageLink);
     return;
   }
@@ -108,6 +109,7 @@ document.addEventListener("click", async (event) => {
     if (actionName === "save-report") await saveReport();
     else if (actionName === "export-report-pdf") await exportReport("pdf");
     else if (actionName === "export-report-excel") await exportReport("excel");
+    else if (actionName === "create-booking") await openBookingForm();
     else openRecordForm(actionName.replace("create-", ""));
     return;
   }
