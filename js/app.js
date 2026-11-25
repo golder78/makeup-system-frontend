@@ -78,6 +78,23 @@ async function saveReport() {
   }
 }
 
+async function exportReport(format) {
+  try {
+    if (format === "pdf") {
+      const { downloadReportPdf } = await import("./report-pdf.js");
+      downloadReportPdf(state.summary, state.summaryRange);
+    } else if (format === "excel") {
+      const { downloadReportExcel } = await import("./report-excel.js");
+      downloadReportExcel(state.summary, state.summaryRange);
+    } else {
+      throw new Error("Unsupported report format.");
+    }
+    toast(`Report downloaded as ${format.toUpperCase()}.`);
+  } catch (error) {
+    toast(`Report export failed: ${error.message}`, true);
+  }
+}
+
 document.addEventListener("click", async (event) => {
   const pageLink = event.target.closest("[data-page], [data-page-link]");
   if (pageLink) {
@@ -89,6 +106,8 @@ document.addEventListener("click", async (event) => {
   if (action) {
     const actionName = action.dataset.action;
     if (actionName === "save-report") await saveReport();
+    else if (actionName === "export-report-pdf") await exportReport("pdf");
+    else if (actionName === "export-report-excel") await exportReport("excel");
     else openRecordForm(actionName.replace("create-", ""));
     return;
   }

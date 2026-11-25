@@ -360,7 +360,7 @@ function breakdown(rows, key) {
 function renderReports() {
   const summary = state.summary;
   pageView.innerHTML = `
-    ${pageHeading("A CLEAR LOOK AT YOUR HARD WORK", "Your reports.", "Take a breath and see how your studio is doing, one thoughtful period at a time.", '<button class="button button-primary" data-action="save-report">Save this report <span aria-hidden="true">↗</span></button>')}
+    ${pageHeading("A CLEAR LOOK AT YOUR HARD WORK", "Your reports.", "Take a breath and see how your studio is doing, one thoughtful period at a time.", '<div class="report-export-actions"><button class="button button-outline" data-action="export-report-pdf">Download PDF</button><button class="button button-outline" data-action="export-report-excel">Download Excel</button><button class="button button-primary" data-action="save-report">Save this report <span aria-hidden="true">↗</span></button></div>')}
     <div class="filter-bar filter-summary">
       <label class="eyebrow" for="report-from">FROM</label><input class="field-control" id="report-from" type="date" value="${esc(state.summaryRange.from)}" />
       <label class="eyebrow" for="report-to">TO</label><input class="field-control" id="report-to" type="date" value="${esc(state.summaryRange.to)}" />
