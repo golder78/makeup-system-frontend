@@ -1,35 +1,10 @@
 import { state, toast } from "./core.js";
-import { api, setUnauthorizedHandler } from "./api.js";
+import { api } from "./api.js";
 import { navigate, renderCalendar, renderMoney } from "./pages.js";
 import { openRecordForm, submitRecord } from "./forms.js";
 
-const appShell = document.querySelector("#app-shell");
-const loginScreen = document.querySelector("#login-screen");
-const loginError = document.querySelector("#login-error");
 const dialog = document.querySelector("#record-dialog");
 const dialogForm = document.querySelector("#record-form");
-
-function showLogin(message = "") {
-  state.user = null;
-  appShell.hidden = true;
-  loginScreen.hidden = false;
-  loginError.textContent = message;
-}
-
-function showApp(user) {
-  state.user = user;
-  loginScreen.hidden = true;
-  appShell.hidden = false;
-  document.querySelector("#user-email").textContent = user.email;
-  document.querySelector("#user-avatar").textContent = (user.email?.[0] || "F").toUpperCase();
-  document.querySelector("#today-label").textContent = new Intl.DateTimeFormat(
-    "en-KE",
-    { weekday: "short", day: "numeric", month: "short" },
-  ).format(new Date());
-  navigate(state.page);
-}
-
-setUnauthorizedHandler(() => showLogin("Your session has expired. Please sign in again."));
 
 function recordByType(type, id) {
   const source = {
@@ -152,50 +127,3 @@ document.querySelectorAll(".close-dialog").forEach((button) => {
   button.addEventListener("click", () => dialog.close());
 });
 dialogForm.addEventListener("submit", submitRecord);
-document.querySelector("#mobile-menu").addEventListener("click", () => {
-  document.querySelector(".sidebar").classList.toggle("is-open");
-});
-document.querySelector("#logout-button").addEventListener("click", async () => {
-  try {
-    await api("/auth/logout", { method: "POST" });
-    state.user = null;
-    showLogin();
-  } catch (error) {
-    toast(`Sign out failed: ${error.message}`, true);
-  }
-});
-document.querySelector("#login-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const submit = form.querySelector('button[type="submit"]');
-  submit.disabled = true;
-  loginError.textContent = "";
-  try {
-    const formData = new FormData(form);
-    const user = await api("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email: formData.get("email"), password: formData.get("password") }),
-    });
-    form.reset();
-    showApp(user);
-  } catch (error) {
-    loginError.textContent = error.message || "We couldn’t sign you in.";
-  } finally {
-    submit.disabled = false;
-  }
-});
-
-async function start() {
-  try {
-    const user = await api("/auth/me");
-    showApp(user);
-  } catch (error) {
-    if (error.message !== "Authentication required." && error.message !== "Invalid or expired session.") {
-      showLogin(error.message);
-    } else {
-      showLogin();
-    }
-  }
-}
-
-start();
