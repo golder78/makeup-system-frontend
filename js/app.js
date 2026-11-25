@@ -1,0 +1,201 @@
+import { state, toast } from "./core.js";
+import { api, setUnauthorizedHandler } from "./api.js";
+import { navigate, renderCalendar, renderMoney } from "./pages.js";
+import { openRecordForm, submitRecord } from "./forms.js";
+
+const appShell = document.querySelector("#app-shell");
+const loginScreen = document.querySelector("#login-screen");
+const loginError = document.querySelector("#login-error");
+const dialog = document.querySelector("#record-dialog");
+const dialogForm = document.querySelector("#record-form");
+
+function showLogin(message = "") {
+  state.user = null;
+  appShell.hidden = true;
+  loginScreen.hidden = false;
+  loginError.textContent = message;
+}
+
+function showApp(user) {
+  state.user = user;
+  loginScreen.hidden = true;
+  appShell.hidden = false;
+  document.querySelector("#user-email").textContent = user.email;
+  document.querySelector("#user-avatar").textContent = (user.email?.[0] || "F").toUpperCase();
+  document.querySelector("#today-label").textContent = new Intl.DateTimeFormat(
+    "en-KE",
+    { weekday: "short", day: "numeric", month: "short" },
+  ).format(new Date());
+  navigate(state.page);
+}
+
+setUnauthorizedHandler(() => showLogin("Your session has expired. Please sign in again."));
+
+function recordByType(type, id) {
+  const source = {
+    client: state.clients,
+    stock: state.inventory,
+    booking: state.bookings,
+    income: state.income,
+    expense: state.expenses,
+    service: state.services,
+  }[type];
+  return source?.find((item) => item.id === Number(id));
+}
+
+async function deleteRecord(type, id) {
+  const endpoints = {
+    client: "/clients",
+    stock: "/inventory",
+    booking: "/bookings",
+    income: "/income",
+    expense: "/expenses",
+    service: "/services",
+    report: "/reports",
+  };
+  const labels = {
+    client: "this client",
+    stock: "this product",
+    booking: "this booking",
+    income: "this income entry",
+    expense: "this expense",
+    service: "this service",
+    report: "this saved report",
+  };
+  if (!window.confirm(`Remove ${labels[type]}? This can’t be undone.`)) return;
+  try {
+    await api(`${endpoints[type]}/${id}`, { method: "DELETE" });
+    toast(`${type === "stock" ? "Product" : type[0].toUpperCase() + type.slice(1)} removed.`);
+    await navigate(state.page);
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+async function changeServiceAvailability(button) {
+  const id = button.dataset.toggleService;
+  const service = recordByType("service", id);
+  if (!service) return;
+  try {
+    await api(`/services/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ isActive: button.dataset.active !== "true" }),
+    });
+    toast(`Service ${button.dataset.active === "true" ? "paused" : "activated"}.`);
+    await navigate(state.page);
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+async function saveReport() {
+  const { from, to } = state.summaryRange;
+  const reportType = from.slice(0, 7) === to.slice(0, 7) ? "monthly" : "custom";
+  try {
+    await api("/reports", {
+      method: "POST",
+      body: JSON.stringify({ reportType, periodStart: from, periodEnd: to, generatedBy: state.user?.email || null }),
+    });
+    toast("Your report snapshot has been saved.");
+    await navigate("reports");
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+document.addEventListener("click", async (event) => {
+  const pageLink = event.target.closest("[data-page], [data-page-link]");
+  if (pageLink) {
+    event.preventDefault();
+    await navigate(pageLink.dataset.page || pageLink.dataset.pageLink);
+    return;
+  }
+  const action = event.target.closest("[data-action]");
+  if (action) {
+    const actionName = action.dataset.action;
+    if (actionName === "save-report") await saveReport();
+    else openRecordForm(actionName.replace("create-", ""));
+    return;
+  }
+  const edit = event.target.closest("[data-edit]");
+  if (edit) {
+    openRecordForm(edit.dataset.edit, recordByType(edit.dataset.edit, edit.dataset.id));
+    return;
+  }
+  const remove = event.target.closest("[data-delete]");
+  if (remove) {
+    await deleteRecord(remove.dataset.delete, remove.dataset.id);
+    return;
+  }
+  const tab = event.target.closest("[data-money-tab]");
+  if (tab) {
+    state.moneyTab = tab.dataset.moneyTab === "expenses" ? "expenses" : "income";
+    renderMoney();
+    return;
+  }
+  const monthStep = event.target.closest("[data-calendar-step]");
+  if (monthStep) {
+    state.calendarDate.setMonth(state.calendarDate.getMonth() + Number(monthStep.dataset.calendarStep));
+    renderCalendar();
+    return;
+  }
+  if (event.target.closest("[data-calendar-today]")) {
+    state.calendarDate = new Date();
+    renderCalendar();
+    return;
+  }
+  const toggle = event.target.closest("[data-toggle-service]");
+  if (toggle) await changeServiceAvailability(toggle);
+});
+
+document.querySelectorAll(".close-dialog").forEach((button) => {
+  button.addEventListener("click", () => dialog.close());
+});
+dialogForm.addEventListener("submit", submitRecord);
+document.querySelector("#mobile-menu").addEventListener("click", () => {
+  document.querySelector(".sidebar").classList.toggle("is-open");
+});
+document.querySelector("#logout-button").addEventListener("click", async () => {
+  try {
+    await api("/auth/logout", { method: "POST" });
+    state.user = null;
+    showLogin();
+  } catch (error) {
+    toast(`Sign out failed: ${error.message}`, true);
+  }
+});
+document.querySelector("#login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  loginError.textContent = "";
+  try {
+    const formData = new FormData(form);
+    const user = await api("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: formData.get("email"), password: formData.get("password") }),
+    });
+    form.reset();
+    showApp(user);
+  } catch (error) {
+    loginError.textContent = error.message || "We couldn’t sign you in.";
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+async function start() {
+  try {
+    const user = await api("/auth/me");
+    showApp(user);
+  } catch (error) {
+    if (error.message !== "Authentication required." && error.message !== "Invalid or expired session.") {
+      showLogin(error.message);
+    } else {
+      showLogin();
+    }
+  }
+}
+
+start();
